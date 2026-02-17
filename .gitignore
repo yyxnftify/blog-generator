@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 認証情報（絶対にGitHubに上げない）
+credentials.json
+*.json.bak
+
+# ローカル生成物
+generated_articles/
+blog_data/sources/
+blog_data/instagram_sources.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Streamlit
+.streamlit/secrets.toml
