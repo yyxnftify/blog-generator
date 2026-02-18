@@ -96,12 +96,23 @@ st.markdown("""
 with st.sidebar:
     st.markdown("## ⚙️ 設定")
     
-    # Gemini APIキー
-    api_key = st.text_input(
-        "🔑 Gemini API Key",
-        type="password",
-        help="Google Gemini APIのキーを入力してください"
-    )
+    # Gemini APIキー（Secretsから自動読み込み or 手入力）
+    saved_api_key = ""
+    try:
+        if "GEMINI_API_KEY" in st.secrets:
+            saved_api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+    
+    if saved_api_key:
+        st.success("🔑 APIキー: Secretsから自動読み込み済み")
+        api_key = saved_api_key
+    else:
+        api_key = st.text_input(
+            "🔑 Gemini API Key",
+            type="password",
+            help="Google Gemini APIのキーを入力してください"
+        )
     
     st.markdown("---")
     
