@@ -312,7 +312,8 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
     # リサーチデータを整形
     source_data = ""
     if research_data and research_data.get("combined_content"):
-        source_data = research_data["combined_content"][:15000]
+        # 文字数制限（Groq対策: 15000 -> 5000）
+        source_data = research_data["combined_content"][:5000]
 
     # 構成案をテキスト化
     outline_text = ""
@@ -401,7 +402,7 @@ HTML形式で出力すること。WordPressに直接貼り付けられる形式�
 {outline_data.get('search_intent', 'キーワードに関する情報を知りたい')}
 
 ## 独自ソース（★最優先で参考にすること。専門家・社内資料の情報は信頼性が高い）
-{custom_sources_text[:15000] if custom_sources_text else '（独自ソースなし）'}
+{custom_sources_text[:5000] if custom_sources_text else '（独自ソースなし）'}
 
 ## Web参考ソース（以下のデータを補助的な根拠として活用すること。ただしコピペ・丸写しは厳禁）
 {source_data}
