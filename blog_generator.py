@@ -170,7 +170,7 @@ def generate_content_groq(api_key, system_prompt, user_prompt, temperature=0.7):
 
     url = "https://api.groq.com/openai/v1/chat/completions"
     # ブログ記事向けに大きなコンテキストのモデルを使用
-    model = "llama-3.1-70b-versatile"
+    model = "llama-3.3-70b-versatile"
     print(f"★ Using Groq: {model}")
 
     headers = {
