@@ -634,18 +634,18 @@ with tab_sources:
         else:
             st.info("📭 まだInstagramソースが登録されていません。")
     
-    # --- Webページソース（全幅） ---
+    # --- Webページ / YouTubeソース（全幅） ---
     st.markdown("---")
-    st.markdown("### 🌐 WebページURL ソース")
-    st.markdown("参考にしたいWebページのURLを貼り付けると、内容を自動取得して情報ソースに追加します。")
+    st.markdown("### 🌐 Web / YouTube ソース")
+    st.markdown("WebページのURLまたはYouTube動画のURLを貼り付けると、内容を自動取得して情報ソースに追加します。")
     
     web_col1, web_col2 = st.columns([3, 1])
     
     with web_col1:
         web_url = st.text_input(
             "URL",
-            placeholder="https://example.com/article",
-            help="参考にしたいWebページのURLを入力",
+            placeholder="https://example.com/article  または  https://youtube.com/watch?v=xxxxx",
+            help="WebページまたはYouTube動画のURLを入力",
             label_visibility="collapsed"
         )
     
@@ -658,56 +658,83 @@ with tab_sources:
         )
     
     if web_url:
-        btn_col1, btn_col2 = st.columns(2)
+        # YouTube URL判定
+        is_youtube = any(domain in web_url for domain in ["youtube.com", "youtu.be"])
         
-        with btn_col1:
-            single_page = st.button("📥 このページだけ取得", type="primary", use_container_width=True)
-        with btn_col2:
-            crawl_site_btn = st.button("🔍 サイト全体を取得（最大10ページ）", use_container_width=True)
-        
-        if single_page:
-            with st.spinner("🔄 ページを取得中..."):
-                result = source_loader.fetch_web_page(web_url)
-                
-                if result["success"]:
-                    saved = source_loader.save_web_source(
-                        url=web_url,
-                        title=result["title"],
-                        text=result["text"],
-                        tags=web_tags
-                    )
-                    if saved:
-                        st.success(f"✅ 保存完了: **{result['title']}**（{result['char_count']:,}文字）")
-                        st.rerun()
-                    else:
-                        st.error("❌ 保存に失敗しました")
-                else:
-                    st.error(f"❌ 取得失敗: {result.get('error', '不明なエラー')}")
-        
-        if crawl_site_btn:
-            with st.spinner("🔍 サイト内を巡回中...（最大10ページ、少し時間がかかります）"):
-                pages = source_loader.crawl_site(web_url, max_pages=10)
-                
-                if pages:
-                    saved_count = 0
-                    for page in pages:
-                        if page.get("success"):
-                            saved = source_loader.save_web_source(
-                                url=page["url"],
-                                title=page["title"],
-                                text=page["text"],
-                                tags=web_tags
-                            )
-                            if saved:
-                                saved_count += 1
+        if is_youtube:
+            # YouTube用ボタン
+            st.info("🎬 YouTube動画が検出されました。字幕テキストを取得します。")
+            if st.button("🎬 YouTube字幕を取得して保存", type="primary", use_container_width=True):
+                with st.spinner("🔄 YouTube字幕を取得中..."):
+                    result = source_loader.fetch_youtube_transcript(web_url)
                     
-                    if saved_count > 0:
-                        st.success(f"✅ サイト巡回完了！**{saved_count}ページ**を保存しました")
-                        st.rerun()
+                    if result["success"]:
+                        saved = source_loader.save_web_source(
+                            url=web_url,
+                            title=f"🎬 {result['title']}",
+                            text=result["text"],
+                            tags=web_tags
+                        )
+                        if saved:
+                            lang_info = result.get("language", "不明")
+                            st.success(f"✅ 保存完了: **{result['title']}**（{result['char_count']:,}文字 / 言語: {lang_info}）")
+                            st.rerun()
+                        else:
+                            st.error("❌ 保存に失敗しました")
                     else:
-                        st.error("❌ ページの保存に失敗しました")
-                else:
-                    st.error("❌ サイトからページを取得できませんでした")
+                        st.error(f"❌ 取得失敗: {result.get('error', '不明なエラー')}")
+        else:
+            # Webページ用ボタン
+            btn_col1, btn_col2 = st.columns(2)
+            
+            with btn_col1:
+                single_page = st.button("📥 このページだけ取得", type="primary", use_container_width=True)
+            with btn_col2:
+                crawl_site_btn = st.button("🔍 サイト全体を取得（最大10ページ）", use_container_width=True)
+            
+            if single_page:
+                with st.spinner("🔄 ページを取得中..."):
+                    result = source_loader.fetch_web_page(web_url)
+                    
+                    if result["success"]:
+                        saved = source_loader.save_web_source(
+                            url=web_url,
+                            title=result["title"],
+                            text=result["text"],
+                            tags=web_tags
+                        )
+                        if saved:
+                            st.success(f"✅ 保存完了: **{result['title']}**（{result['char_count']:,}文字）")
+                            st.rerun()
+                        else:
+                            st.error("❌ 保存に失敗しました")
+                    else:
+                        st.error(f"❌ 取得失敗: {result.get('error', '不明なエラー')}")
+            
+            if crawl_site_btn:
+                with st.spinner("🔍 サイト内を巡回中...（最大10ページ、少し時間がかかります）"):
+                    pages = source_loader.crawl_site(web_url, max_pages=10)
+                    
+                    if pages:
+                        saved_count = 0
+                        for page in pages:
+                            if page.get("success"):
+                                saved = source_loader.save_web_source(
+                                    url=page["url"],
+                                    title=page["title"],
+                                    text=page["text"],
+                                    tags=web_tags
+                                )
+                                if saved:
+                                    saved_count += 1
+                        
+                        if saved_count > 0:
+                            st.success(f"✅ サイト巡回完了！**{saved_count}ページ**を保存しました")
+                            st.rerun()
+                        else:
+                            st.error("❌ ページの保存に失敗しました")
+                    else:
+                        st.error("❌ サイトからページを取得できませんでした")
     
     # 保存済みWebソース一覧
     web_sources = source_loader.load_web_sources()

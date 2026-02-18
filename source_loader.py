@@ -720,6 +720,126 @@ def crawl_site(start_url, max_pages=10, max_chars_per_page=15000):
     return results
 
 
+# ==========================================
+# YouTube字幕ソースの取得
+# ==========================================
+
+def extract_youtube_video_id(url):
+    """YouTube URLから動画IDを抽出する"""
+    import re
+    patterns = [
+        r'(?:v=|\/v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+        r'(?:embed\/)([a-zA-Z0-9_-]{11})',
+        r'(?:shorts\/)([a-zA-Z0-9_-]{11})',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def fetch_youtube_transcript(url, max_chars=30000):
+    """
+    YouTube動画の字幕テキストを取得する。
+    日本語字幕を優先し、なければ英語、それもなければ自動字幕を試す。
+    
+    Returns:
+        dict: {"success": bool, "title": str, "text": str, "char_count": int, ...}
+    """
+    video_id = extract_youtube_video_id(url)
+    if not video_id:
+        return {
+            "success": False,
+            "title": "",
+            "text": "",
+            "char_count": 0,
+            "url": url,
+            "error": "YouTube URLとして認識できません"
+        }
+    
+    # 動画タイトルを取得（oEmbed API - APIキー不要）
+    title = f"YouTube動画 ({video_id})"
+    try:
+        import requests
+        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        resp = requests.get(oembed_url, timeout=5)
+        if resp.status_code == 200:
+            title = resp.json().get("title", title)
+    except:
+        pass
+    
+    # 字幕を取得
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        
+        # 利用可能な字幕一覧を取得
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        transcript = None
+        
+        # 日本語字幕を優先
+        for lang in ["ja", "ja-JP"]:
+            try:
+                transcript = transcript_list.find_transcript([lang])
+                break
+            except:
+                continue
+        
+        # 日本語がなければ英語
+        if not transcript:
+            try:
+                transcript = transcript_list.find_transcript(["en"])
+            except:
+                pass
+        
+        # それでもなければ自動生成字幕
+        if not transcript:
+            try:
+                generated = transcript_list.find_generated_transcript(["ja", "ja-JP", "en"])
+                transcript = generated
+            except:
+                pass
+        
+        if not transcript:
+            return {
+                "success": False,
+                "title": title,
+                "text": "",
+                "char_count": 0,
+                "url": url,
+                "error": "この動画には字幕がありません"
+            }
+        
+        # 字幕テキストを取得
+        entries = transcript.fetch()
+        text_parts = [entry["text"] for entry in entries]
+        full_text = "\n".join(text_parts)
+        
+        # 文字数制限
+        if len(full_text) > max_chars:
+            full_text = full_text[:max_chars] + "\n...(以下省略)"
+        
+        return {
+            "success": True,
+            "title": title,
+            "text": full_text,
+            "char_count": len(full_text),
+            "url": url,
+            "video_id": video_id,
+            "language": transcript.language
+        }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "title": title,
+            "text": "",
+            "char_count": 0,
+            "url": url,
+            "error": f"字幕取得エラー: {str(e)}"
+        }
+
 def load_web_sources():
     """保存済みのWebページソースを読み込む"""
     if os.path.exists(WEB_SOURCES_FILE):

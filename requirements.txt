@@ -5,3 +5,4 @@ pdfplumber
 openpyxl
 gspread
 oauth2client
+youtube-transcript-api
