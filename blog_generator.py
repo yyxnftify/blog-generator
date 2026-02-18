@@ -229,7 +229,7 @@ def generate_article_outline(keyword, research_data, api_key):
     記事の構成案（見出し構造）を先に生成する。
     これにより、記事全体の流れを制御しやすくする。
     """
-    current_api_key = api_key if api_key else GOOGLE_API_KEY
+    current_api_key = api_key if api_key else (GROQ_API_KEY if AI_BACKEND == "groq" else GOOGLE_API_KEY)
     product_info = load_product_info()
 
     # リサーチで取得した見出しを参考データとして追加
@@ -299,7 +299,7 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
     JetBサイト風の読みやすい記事を目指す。
     custom_sources_text: source_loaderから取得した独自ソースのテキスト
     """
-    current_api_key = api_key if api_key else GOOGLE_API_KEY
+    current_api_key = api_key if api_key else (GROQ_API_KEY if AI_BACKEND == "groq" else GOOGLE_API_KEY)
     product_info = load_product_info()
 
     # リサーチデータを整形
@@ -439,7 +439,11 @@ def generate_blog_article(keyword, api_key=None, do_research=True, max_sources=5
             "error": str or None
         }
     """
-    current_api_key = api_key if api_key else GOOGLE_API_KEY  
+    # バックエンドに応じてAPIキーを選択
+    if AI_BACKEND == "groq":
+        current_api_key = api_key if api_key else GROQ_API_KEY
+    else:
+        current_api_key = api_key if api_key else GOOGLE_API_KEY
 
     print(f"\n{'='*60}")
     print(f"📝 ブログ記事生成開始: 「{keyword}」")
