@@ -485,7 +485,7 @@ def generate_blog_article(keyword, api_key=None, do_research=True, max_sources=5
     custom_sources_text = source_loader.get_all_sources_text(keyword)
     sources_summary = source_loader.get_source_summary()
     result["custom_sources_summary"] = sources_summary
-    print(f"  → ファイル: {sources_summary['total_file_count']}件 / Instagram: {sources_summary['instagram_count']}件")
+    print(f"  → ファイル: {sources_summary['total_file_count']}件 / Instagram: {sources_summary['instagram_count']}件 / Web・YouTube: {sources_summary['web_count']}件")
 
     # ステップ1: Web情報収集
     research_data = None

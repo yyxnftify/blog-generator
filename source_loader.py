@@ -910,14 +910,7 @@ def get_web_sources_text(keyword=""):
     
     parts = []
     for src in sources:
-        # キーワードマッチング
-        if keyword:
-            content_lower = (src.get("content", "") + src.get("tags", "") + src.get("title", "")).lower()
-            kw_lower = keyword.lower()
-            # キーワードに部分一致するもの、またはキーワードなしなら全件
-            if kw_lower not in content_lower and all(k not in content_lower for k in kw_lower.split()):
-                continue
-        
+        # 手動登録されたソースはキーワードに関わらず全て使用する
         title = src.get("title", src.get("url", ""))
         content = src.get("content", "")[:5000]
         parts.append(f"### Webソース: {title}\nURL: {src.get('url', '')}\n{content}")
