@@ -324,8 +324,9 @@ with tab_generate:
         elif not keyword:
             st.error("⚠️ キーワードを入力してください")
         else:
-            # API設定
-            blog_generator.config_gemini(api_key)
+            # API設定（サイドバーの選択に応じて）
+            backend = "groq" if ai_backend == "Groq (LLaMA)" else "gemini"
+            blog_generator.config_api(api_key, backend)
             
             # 追加キーワードをメインに統合
             full_keyword = keyword
