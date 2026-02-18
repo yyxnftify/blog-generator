@@ -19,13 +19,18 @@ import web_researcher
 import source_loader
 
 # ==========================================
-# 設定
+# グローバル設定
 # ==========================================
 
-GOOGLE_API_KEY = ""
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PRODUCT_INFO_PATH = os.path.join(BASE_DIR, "blog_data", "product_info.txt")
 ARTICLES_DIR = os.path.join(BASE_DIR, "generated_articles")
+
+GOOGLE_API_KEY = ""
+GROQ_API_KEY = ""
+
+# AIバックエンド設定: "gemini" or "groq"
+AI_BACKEND = "gemini"
 
 # 記事保存ディレクトリが無ければ作成
 os.makedirs(ARTICLES_DIR, exist_ok=True)
@@ -49,13 +54,22 @@ def load_product_info():
 
 
 # ==========================================
-# Gemini API 関連（既存システムと同じ方式）
+# AI API 関連
 # ==========================================
 
+def config_api(api_key, backend="gemini", groq_key=""):
+    """APIキーとバックエンドを設定する"""
+    global GOOGLE_API_KEY, GROQ_API_KEY, AI_BACKEND
+    AI_BACKEND = backend
+    if backend == "gemini":
+        GOOGLE_API_KEY = api_key
+    elif backend == "groq":
+        GROQ_API_KEY = api_key if api_key else groq_key
+
+
 def config_gemini(api_key):
-    """APIキーを設定する"""
-    global GOOGLE_API_KEY
-    GOOGLE_API_KEY = api_key
+    """APIキーを設定する（後方互換）"""
+    config_api(api_key, "gemini")
 
 
 def find_best_model(api_key):
@@ -95,16 +109,16 @@ def find_best_model(api_key):
     return None, None
 
 
-def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7):
+def generate_content_gemini(api_key, system_prompt, user_prompt, temperature=0.7):
     """Gemini APIを叩いてテキストを生成する"""
 
     api_version, model_id = find_best_model(api_key)
 
     if not api_version or not model_id:
-        return None, "API Error: 利用可能なモデルが見つかりません。APIキーを確認してください。"
+        return None, "API Error: 利用可能なGeminiモデルが見つかりません。APIキーを確認してください。"
 
     url = f"https://generativelanguage.googleapis.com/{api_version}/models/{model_id}:generateContent?key={api_key}"
-    print(f"★ Using: {api_version}/models/{model_id}")
+    print(f"★ Using Gemini: {api_version}/models/{model_id}")
 
     headers = {"Content-Type": "application/json"}
 
@@ -134,7 +148,7 @@ def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7):
         response = requests.post(url, headers=headers, json=data)
 
         if response.status_code != 200:
-            return None, f"API Error: {response.status_code} - {response.text[:500]}"
+            return None, f"Gemini API Error: {response.status_code} - {response.text[:500]}"
 
         result_json = response.json()
 
@@ -148,7 +162,62 @@ def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7):
             return None, f"API Response Error: {json.dumps(result_json)[:500]}"
 
     except Exception as e:
-        return None, f"API Request Exception: {e}"
+        return None, f"Gemini API Exception: {e}"
+
+
+def generate_content_groq(api_key, system_prompt, user_prompt, temperature=0.7):
+    """Groq API（OpenAI互換）を叩いてテキストを生成する"""
+
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    # ブログ記事向けに大きなコンテキストのモデルを使用
+    model = "llama-3.1-70b-versatile"
+    print(f"★ Using Groq: {model}")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    data = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": temperature,
+        "max_tokens": 8000,  # Groqのトークン制限に合わせる
+        "top_p": 0.95,
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=120)
+
+        if response.status_code != 200:
+            return None, f"Groq API Error: {response.status_code} - {response.text[:500]}"
+
+        result_json = response.json()
+
+        if "choices" in result_json and result_json["choices"]:
+            content = result_json["choices"][0].get("message", {}).get("content", "")
+            if content:
+                return content, None
+            else:
+                return None, "Groq API: 空のレスポンス"
+        else:
+            return None, f"Groq API Response Error: {json.dumps(result_json)[:500]}"
+
+    except Exception as e:
+        return None, f"Groq API Exception: {e}"
+
+
+def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7):
+    """現在のバックエンド設定に応じてAPIを叩く（統一インターフェース）"""
+    if AI_BACKEND == "groq":
+        groq_key = api_key if api_key else GROQ_API_KEY
+        return generate_content_groq(groq_key, system_prompt, user_prompt, temperature)
+    else:
+        gemini_key = api_key if api_key else GOOGLE_API_KEY
+        return generate_content_gemini(gemini_key, system_prompt, user_prompt, temperature)
 
 
 # ==========================================

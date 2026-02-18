@@ -96,25 +96,55 @@ st.markdown("""
 with st.sidebar:
     st.markdown("## ⚙️ 設定")
     
-    # Gemini APIキー（Secretsから自動読み込み or 手入力）
-    saved_api_key = ""
-    try:
-        for key_name in ["GEMINI_API_KEY", "GOOGLE_API_KEY"]:
-            if key_name in st.secrets:
-                saved_api_key = st.secrets[key_name]
-                break
-    except Exception:
-        pass
+    # AIバックエンド選択
+    ai_backend = st.selectbox(
+        "🤖 AIモデル",
+        ["Gemini", "Groq (LLaMA)"],
+        help="Geminiが制限中の場合はGroqに切り替えてください"
+    )
     
-    if saved_api_key:
-        st.success("🔑 APIキー: Secretsから自動読み込み済み")
-        api_key = saved_api_key
+    # APIキー（Secretsから自動読み込み or 手入力）
+    api_key = ""
+    
+    if ai_backend == "Gemini":
+        # Gemini APIキー
+        saved_key = ""
+        try:
+            for key_name in ["GEMINI_API_KEY", "GOOGLE_API_KEY"]:
+                if key_name in st.secrets:
+                    saved_key = st.secrets[key_name]
+                    break
+        except Exception:
+            pass
+        
+        if saved_key:
+            st.success("🔑 Gemini: Secretsから自動読み込み済み")
+            api_key = saved_key
+        else:
+            api_key = st.text_input(
+                "🔑 Gemini API Key", type="password",
+                help="Google Gemini APIのキーを入力"
+            )
+        blog_generator.config_api(api_key, "gemini")
+    
     else:
-        api_key = st.text_input(
-            "🔑 Gemini API Key",
-            type="password",
-            help="Google Gemini APIのキーを入力してください"
-        )
+        # Groq APIキー
+        saved_key = ""
+        try:
+            if "GROQ_API_KEY" in st.secrets:
+                saved_key = st.secrets["GROQ_API_KEY"]
+        except Exception:
+            pass
+        
+        if saved_key:
+            st.success("🔑 Groq: Secretsから自動読み込み済み")
+            api_key = saved_key
+        else:
+            api_key = st.text_input(
+                "🔑 Groq API Key", type="password",
+                help="Groq APIのキーを入力"
+            )
+        blog_generator.config_api(api_key, "groq")
     
     st.markdown("---")
     
