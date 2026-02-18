@@ -222,11 +222,13 @@ def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7):
             backend = "gemini"
             
     if backend == "groq":
+        print(f"🤖 API Call: Groq (Key: {api_key[:4]}...)")
         groq_key = api_key if api_key else GROQ_API_KEY
         return generate_content_groq(groq_key, system_prompt, user_prompt, temperature)
     else:
-        gemini_key = api_key if api_key else GOOGLE_API_KEY
-        return generate_content_gemini(gemini_key, system_prompt, user_prompt, temperature)
+        key_to_use = api_key if api_key else GOOGLE_API_KEY
+        print(f"🤖 API Call: Gemini (Key: {key_to_use[:4]}...)")
+        return generate_content_gemini(key_to_use, system_prompt, user_prompt, temperature)
 
 
 # ==========================================

@@ -126,6 +126,9 @@ with st.sidebar:
                 help="Google Gemini APIのキーを入力"
             )
         blog_generator.config_api(api_key, "gemini")
+        
+        if api_key and api_key.startswith("gsk_"):
+            st.error("⚠️ 警告: 入力されたキーはGroq用のようです。Geminiを使うには `AIza...` で始まるGoogle APIキーが必要です。")
     
     else:
         # Groq APIキー
@@ -145,7 +148,15 @@ with st.sidebar:
                 help="Groq APIのキーを入力"
             )
         blog_generator.config_api(api_key, "groq")
+
+        if api_key and api_key.startswith("AIza"):
+            st.error("⚠️ 警告: 入力されたキーはGemini用のようです。Groqを使うには `gsk_...` で始まるAPIキーが必要です。")
     
+    if api_key:
+        prefix = api_key[:6] + "..." if len(api_key) > 6 else "..."
+        api_type = "Google (Gemini)" if api_key.startswith("AIza") else ("Groq" if api_key.startswith("gsk_") else "不明")
+        st.caption(f"🗝️ 現在のキー種別: {api_type} (Key: {prefix})")
+
     st.markdown("---")
     
     # WordPress設定（将来用）
