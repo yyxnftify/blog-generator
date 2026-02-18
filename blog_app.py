@@ -99,8 +99,10 @@ with st.sidebar:
     # Gemini APIキー（Secretsから自動読み込み or 手入力）
     saved_api_key = ""
     try:
-        if "GEMINI_API_KEY" in st.secrets:
-            saved_api_key = st.secrets["GEMINI_API_KEY"]
+        for key_name in ["GEMINI_API_KEY", "GOOGLE_API_KEY"]:
+            if key_name in st.secrets:
+                saved_api_key = st.secrets[key_name]
+                break
     except Exception:
         pass
     
