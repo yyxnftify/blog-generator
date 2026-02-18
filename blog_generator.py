@@ -212,7 +212,16 @@ def generate_content_groq(api_key, system_prompt, user_prompt, temperature=0.7):
 
 def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7):
     """現在のバックエンド設定に応じてAPIを叩く（統一インターフェース）"""
-    if AI_BACKEND == "groq":
+    
+    # APIキーからバックエンドを自動判定（安全策）
+    backend = AI_BACKEND
+    if api_key:
+        if api_key.startswith("gsk_"):
+            backend = "groq"
+        elif api_key.startswith("AIza"):
+            backend = "gemini"
+            
+    if backend == "groq":
         groq_key = api_key if api_key else GROQ_API_KEY
         return generate_content_groq(groq_key, system_prompt, user_prompt, temperature)
     else:
