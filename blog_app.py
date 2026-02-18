@@ -604,6 +604,69 @@ with tab_sources:
                         st.rerun()
         else:
             st.info("📭 まだInstagramソースが登録されていません。")
+    
+    # --- Webページソース（全幅） ---
+    st.markdown("---")
+    st.markdown("### 🌐 WebページURL ソース")
+    st.markdown("参考にしたいWebページのURLを貼り付けると、内容を自動取得して情報ソースに追加します。")
+    
+    web_col1, web_col2 = st.columns([3, 1])
+    
+    with web_col1:
+        web_url = st.text_input(
+            "URL",
+            placeholder="https://example.com/article",
+            help="参考にしたいWebページのURLを入力",
+            label_visibility="collapsed"
+        )
+    
+    with web_col2:
+        web_tags = st.text_input(
+            "タグ",
+            placeholder="タグ（任意）",
+            help="関連キーワード",
+            label_visibility="collapsed"
+        )
+    
+    if web_url:
+        if st.button("📥 ページ内容を取得して保存", type="primary"):
+            with st.spinner("🔄 ページを取得中..."):
+                result = source_loader.fetch_web_page(web_url)
+                
+                if result["success"]:
+                    saved = source_loader.save_web_source(
+                        url=web_url,
+                        title=result["title"],
+                        text=result["text"],
+                        tags=web_tags
+                    )
+                    if saved:
+                        st.success(f"✅ 保存完了: **{result['title']}**（{result['char_count']:,}文字）")
+                        st.rerun()
+                    else:
+                        st.error("❌ 保存に失敗しました")
+                else:
+                    st.error(f"❌ 取得失敗: {result.get('error', '不明なエラー')}")
+    
+    # 保存済みWebソース一覧
+    web_sources = source_loader.load_web_sources()
+    if web_sources:
+        st.markdown(f"**保存済み: {len(web_sources)}件**")
+        for src in reversed(web_sources):
+            with st.expander(f"🌐 {src.get('title', src['url'])}（{src.get('char_count', 0):,}文字）"):
+                st.markdown(f"🔗 [{src['url']}]({src['url']})")
+                if src.get("tags"):
+                    st.markdown(f"🏷️ タグ: `{src['tags']}`")
+                st.text_area(
+                    "内容プレビュー",
+                    value=src.get("content", "")[:2000],
+                    height=150,
+                    disabled=True,
+                    key=f"web_{src['id']}"
+                )
+                if st.button(f"🗑️ 削除", key=f"del_web_{src['id']}"):
+                    source_loader.delete_web_source(src["id"])
+                    st.rerun()
 
 
 # ==========================================

@@ -454,6 +454,11 @@ def get_all_sources_text(keyword=""):
         if insta_text:
             parts.append("## ★ Instagramソース（専門家投稿）\n" + insta_text)
 
+    # Webページソース（ローカル・クラウド共通）
+    web_text = get_web_sources_text(keyword)
+    if web_text:
+        parts.append("## ★ Webページソース（参考URL）\n" + web_text)
+
     combined = "\n\n" + "=" * 40 + "\n\n".join(parts)
 
     if len(combined) > 80000:
@@ -528,6 +533,7 @@ def get_source_summary():
     # ローカルモード
     file_sources = load_all_file_sources()
     insta_sources = load_instagram_sources()
+    web_sources = load_web_sources()
 
     return {
         "text_count": len(file_sources["text_sources"]),
@@ -535,9 +541,170 @@ def get_source_summary():
         "excel_count": len(file_sources["excel_sources"]),
         "image_count": len(file_sources["image_sources"]),
         "instagram_count": len(insta_sources),
+        "web_count": len(web_sources),
         "total_file_count": file_sources["total_count"],
-        "total_count": file_sources["total_count"] + len(insta_sources),
+        "total_count": file_sources["total_count"] + len(insta_sources) + len(web_sources),
     }
+
+
+# ==========================================
+# Webページソースの管理
+# ==========================================
+
+WEB_SOURCES_FILE = os.path.join(BASE_DIR, "blog_data", "web_sources.json")
+
+
+def fetch_web_page(url, max_chars=30000):
+    """
+    URLからWebページのテキスト内容を取得する。
+    HTMLタグを除去して本文テキストのみ抽出する。
+    """
+    try:
+        import requests
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        # エンコーディング自動判定
+        response.encoding = response.apparent_encoding or "utf-8"
+        html = response.text
+        
+        # BeautifulSoupでテキスト抽出
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, "html.parser")
+            
+            # 不要なタグを除去
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
+                tag.decompose()
+            
+            # ページタイトル取得
+            title = soup.title.string.strip() if soup.title and soup.title.string else url
+            
+            # 本文テキスト抽出
+            text = soup.get_text(separator="\n", strip=True)
+            
+            # 空行の重複を除去
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            text = "\n".join(lines)
+            
+        except ImportError:
+            # BeautifulSoupがない場合はHTML正規表現で簡易除去
+            import re
+            title = url
+            text = re.sub(r'<[^>]+>', ' ', html)
+            text = re.sub(r'\s+', ' ', text).strip()
+        
+        # 文字数制限
+        if len(text) > max_chars:
+            text = text[:max_chars] + "\n...(以下省略)"
+        
+        return {
+            "success": True,
+            "title": title,
+            "text": text,
+            "char_count": len(text),
+            "url": url
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "title": "",
+            "text": "",
+            "char_count": 0,
+            "url": url,
+            "error": str(e)
+        }
+
+
+def load_web_sources():
+    """保存済みのWebページソースを読み込む"""
+    if os.path.exists(WEB_SOURCES_FILE):
+        try:
+            with open(WEB_SOURCES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+
+def save_web_source(url, title="", text="", tags=""):
+    """
+    Webページの内容をソースとして保存する。
+    クラウド接続時はGoogle Sheetsにも保存。
+    """
+    sources = load_web_sources()
+    
+    new_source = {
+        "id": datetime.now().strftime('%Y%m%d_%H%M%S') + f"_{len(sources)}",
+        "url": url,
+        "title": title,
+        "content": text,
+        "char_count": len(text),
+        "tags": tags,
+        "saved_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    
+    sources.append(new_source)
+    
+    try:
+        os.makedirs(os.path.dirname(WEB_SOURCES_FILE), exist_ok=True)
+        with open(WEB_SOURCES_FILE, "w", encoding="utf-8") as f:
+            json.dump(sources, f, ensure_ascii=False, indent=2)
+        
+        # クラウドにも保存
+        cloud = _get_cloud()
+        if cloud:
+            try:
+                cloud.save_source("web", url, text[:10000], title)
+            except:
+                pass
+        
+        return True
+    except Exception as e:
+        print(f"Webソース保存エラー: {e}")
+        return False
+
+
+def delete_web_source(source_id):
+    """指定IDのWebソースを削除する"""
+    sources = load_web_sources()
+    sources = [s for s in sources if s.get("id") != source_id]
+    try:
+        with open(WEB_SOURCES_FILE, "w", encoding="utf-8") as f:
+            json.dump(sources, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
+
+def get_web_sources_text(keyword=""):
+    """
+    保存済みWebソースのテキストを統合して返す。
+    キーワードでフィルタリング可能。
+    """
+    sources = load_web_sources()
+    if not sources:
+        return ""
+    
+    parts = []
+    for src in sources:
+        # キーワードマッチング
+        if keyword:
+            content_lower = (src.get("content", "") + src.get("tags", "") + src.get("title", "")).lower()
+            kw_lower = keyword.lower()
+            # キーワードに部分一致するもの、またはキーワードなしなら全件
+            if kw_lower not in content_lower and all(k not in content_lower for k in kw_lower.split()):
+                continue
+        
+        title = src.get("title", src.get("url", ""))
+        content = src.get("content", "")[:5000]
+        parts.append(f"### Webソース: {title}\nURL: {src.get('url', '')}\n{content}")
+    
+    return "\n\n".join(parts)
 
 
 def is_cloud_mode():
