@@ -658,7 +658,14 @@ with tab_sources:
         )
     
     if web_url:
-        if st.button("📥 ページ内容を取得して保存", type="primary"):
+        btn_col1, btn_col2 = st.columns(2)
+        
+        with btn_col1:
+            single_page = st.button("📥 このページだけ取得", type="primary", use_container_width=True)
+        with btn_col2:
+            crawl_site_btn = st.button("🔍 サイト全体を取得（最大10ページ）", use_container_width=True)
+        
+        if single_page:
             with st.spinner("🔄 ページを取得中..."):
                 result = source_loader.fetch_web_page(web_url)
                 
@@ -676,6 +683,31 @@ with tab_sources:
                         st.error("❌ 保存に失敗しました")
                 else:
                     st.error(f"❌ 取得失敗: {result.get('error', '不明なエラー')}")
+        
+        if crawl_site_btn:
+            with st.spinner("🔍 サイト内を巡回中...（最大10ページ、少し時間がかかります）"):
+                pages = source_loader.crawl_site(web_url, max_pages=10)
+                
+                if pages:
+                    saved_count = 0
+                    for page in pages:
+                        if page.get("success"):
+                            saved = source_loader.save_web_source(
+                                url=page["url"],
+                                title=page["title"],
+                                text=page["text"],
+                                tags=web_tags
+                            )
+                            if saved:
+                                saved_count += 1
+                    
+                    if saved_count > 0:
+                        st.success(f"✅ サイト巡回完了！**{saved_count}ページ**を保存しました")
+                        st.rerun()
+                    else:
+                        st.error("❌ ページの保存に失敗しました")
+                else:
+                    st.error("❌ サイトからページを取得できませんでした")
     
     # 保存済みWebソース一覧
     web_sources = source_loader.load_web_sources()

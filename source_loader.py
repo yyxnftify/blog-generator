@@ -620,6 +620,106 @@ def fetch_web_page(url, max_chars=30000):
         }
 
 
+def crawl_site(start_url, max_pages=10, max_chars_per_page=15000):
+    """
+    指定URLを起点にサイト内のリンクをたどって複数ページを取得する。
+    同一ドメインのページのみ対象。
+    
+    Args:
+        start_url: 開始URL
+        max_pages: 最大取得ページ数（デフォルト10）
+        max_chars_per_page: 1ページあたりの最大文字数
+    
+    Returns:
+        list: 取得結果のリスト [{"url": ..., "title": ..., "text": ..., "success": ...}, ...]
+    """
+    try:
+        from urllib.parse import urlparse, urljoin
+        import requests
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return [{"success": False, "url": start_url, "error": "必要なライブラリがありません"}]
+    
+    # ドメインを取得
+    parsed_start = urlparse(start_url)
+    base_domain = parsed_start.netloc
+    base_scheme = parsed_start.scheme
+    
+    visited = set()
+    to_visit = [start_url]
+    results = []
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    while to_visit and len(results) < max_pages:
+        url = to_visit.pop(0)
+        
+        # 正規化
+        url = url.split("#")[0]  # フラグメント除去
+        if url in visited:
+            continue
+        visited.add(url)
+        
+        # 同一ドメインチェック
+        parsed = urlparse(url)
+        if parsed.netloc != base_domain:
+            continue
+        
+        # ファイル拡張子を除外（画像、PDF等）
+        skip_ext = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".zip", ".mp4", ".mp3", ".css", ".js"]
+        if any(url.lower().endswith(ext) for ext in skip_ext):
+            continue
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code != 200:
+                continue
+            
+            response.encoding = response.apparent_encoding or "utf-8"
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # 不要なタグを除去
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
+                tag.decompose()
+            
+            # タイトル取得
+            title = soup.title.string.strip() if soup.title and soup.title.string else url
+            
+            # 本文テキスト
+            text = soup.get_text(separator="\n", strip=True)
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            text = "\n".join(lines)
+            
+            if len(text) > max_chars_per_page:
+                text = text[:max_chars_per_page] + "\n...(以下省略)"
+            
+            # 短すぎるページはスキップ（ナビページ等）
+            if len(text) < 100:
+                continue
+            
+            results.append({
+                "success": True,
+                "url": url,
+                "title": title,
+                "text": text,
+                "char_count": len(text)
+            })
+            
+            # リンクを収集
+            for a_tag in soup.find_all("a", href=True):
+                link = urljoin(url, a_tag["href"])
+                link = link.split("#")[0]
+                if link not in visited and urlparse(link).netloc == base_domain:
+                    to_visit.append(link)
+        
+        except Exception:
+            continue
+    
+    return results
+
+
 def load_web_sources():
     """保存済みのWebページソースを読み込む"""
     if os.path.exists(WEB_SOURCES_FILE):
