@@ -769,39 +769,33 @@ def fetch_youtube_transcript(url, max_chars=30000):
     except:
         pass
     
-    # 字幕を取得
+    # 字幕を取得（youtube-transcript-api v1.x対応）
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         
-        # 利用可能な字幕一覧を取得
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        ytt_api = YouTubeTranscriptApi()
         
-        transcript = None
+        # まず日本語で直接取得を試す
+        fetched = None
+        lang_used = ""
         
-        # 日本語字幕を優先
-        for lang in ["ja", "ja-JP"]:
+        for langs in [["ja", "ja-JP"], ["en"]]:
             try:
-                transcript = transcript_list.find_transcript([lang])
+                fetched = ytt_api.fetch(video_id, languages=langs)
+                lang_used = fetched.language if hasattr(fetched, 'language') else langs[0]
                 break
             except:
                 continue
         
-        # 日本語がなければ英語
-        if not transcript:
+        # 言語指定なしでデフォルト取得
+        if not fetched:
             try:
-                transcript = transcript_list.find_transcript(["en"])
+                fetched = ytt_api.fetch(video_id)
+                lang_used = fetched.language if hasattr(fetched, 'language') else "auto"
             except:
                 pass
         
-        # それでもなければ自動生成字幕
-        if not transcript:
-            try:
-                generated = transcript_list.find_generated_transcript(["ja", "ja-JP", "en"])
-                transcript = generated
-            except:
-                pass
-        
-        if not transcript:
+        if not fetched:
             return {
                 "success": False,
                 "title": title,
@@ -811,9 +805,13 @@ def fetch_youtube_transcript(url, max_chars=30000):
                 "error": "この動画には字幕がありません"
             }
         
-        # 字幕テキストを取得
-        entries = transcript.fetch()
-        text_parts = [entry["text"] for entry in entries]
+        # 字幕テキストを結合
+        text_parts = []
+        for snippet in fetched:
+            text = snippet.text if hasattr(snippet, 'text') else snippet.get("text", "")
+            if text:
+                text_parts.append(text)
+        
         full_text = "\n".join(text_parts)
         
         # 文字数制限
@@ -827,7 +825,7 @@ def fetch_youtube_transcript(url, max_chars=30000):
             "char_count": len(full_text),
             "url": url,
             "video_id": video_id,
-            "language": transcript.language
+            "language": lang_used
         }
     
     except Exception as e:
