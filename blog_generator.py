@@ -61,8 +61,8 @@ def config_gemini(api_key):
 def find_best_model(api_key):
     """利用可能なモデルの中からベストなものを自動選択する"""
     preferred = [
-        "gemini-2.0-flash",
         "gemini-1.5-flash",
+        "gemini-2.0-flash",
         "gemini-1.5-pro",
         "gemini-1.0-pro",
         "gemini-pro",
