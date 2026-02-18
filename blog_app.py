@@ -317,6 +317,25 @@ with tab_generate:
     
     st.markdown("---")
     
+    # 文頭・文末の定型文設定
+    with st.expander("📝 文頭・文末の定型文を設定（任意）"):
+        header_text = st.text_area(
+            "文頭の定型文",
+            placeholder="例: こんにちは！八ヶ岳ガーデンです。\n今回は...",
+            height=100,
+            help="記事の冒頭に必ず挿入されるテキスト",
+            key="header_text"
+        )
+        footer_text = st.text_area(
+            "文末の定型文",
+            placeholder="例: 最後までお読みいただきありがとうございます。\nお問い合わせは...",
+            height=100,
+            help="記事の末尾に必ず挿入されるテキスト",
+            key="footer_text"
+        )
+    
+    st.markdown("---")
+    
     # 生成実行ボタン
     if st.button("🚀 記事を生成する", type="primary", use_container_width=True):
         if not api_key:
@@ -405,6 +424,16 @@ with tab_generate:
                     "generated_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     "error": None
                 }
+                
+                # 文頭・文末の定型文を挿入
+                if header_text:
+                    header_html = "<div class='custom-header'>" + header_text.replace('\n', '<br>') + "</div>\n\n"
+                    article_html = header_html + article_html
+                    article_data["article_html"] = article_html
+                if footer_text:
+                    footer_html = "\n\n<div class='custom-footer'>" + footer_text.replace('\n', '<br>') + "</div>"
+                    article_html = article_html + footer_html
+                    article_data["article_html"] = article_html
                 
                 # セッションに保存（プレビュー用）
                 st.session_state["latest_article"] = article_data
