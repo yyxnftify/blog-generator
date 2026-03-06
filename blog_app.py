@@ -518,6 +518,21 @@ with tab_generate:
             # WP用HTMLソース
             with st.expander("📋 WordPress用HTMLソース（コピペ用）"):
                 st.code(article_html, language="html")
+                
+            # note用テキストソース（簡易マークダウン）
+            with st.expander("📝 note用テキスト（コピペ用）"):
+                import re
+                # HTMLからnote向けにタグを除去・変換
+                note_text = article_html
+                note_text = re.sub(r'<h2>(.*?)</h2>', r'\n\n■ \1\n', note_text) # H2をnote風の大見出しに
+                note_text = re.sub(r'<h3>(.*?)</h3>', r'\n● \1\n', note_text) # H3をnote風の小見出しに
+                note_text = re.sub(r'<strong>(.*?)</strong>', r'【\1】', note_text) # 強調を隅付き括弧に
+                note_text = re.sub(r'<li>(.*?)</li>', r'・\1\n', note_text) # リスト
+                note_text = re.sub(r'<br\s*/?>', '\n', note_text) # 改行
+                note_text = re.sub(r'<[^>]+>', '', note_text) # 残りのHTMLタグをすべて削除
+                note_text = re.sub(r'\n{3,}', '\n\n', note_text).strip() # 余分な改行を整理
+                
+                st.code(note_text, language="markdown")
             
             # WordPress下書き投稿
             if wp_publisher.is_configured():
