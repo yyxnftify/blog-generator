@@ -13,6 +13,7 @@ import os
 import json
 import random
 import requests
+import re
 from datetime import datetime
 
 import web_researcher
@@ -308,6 +309,63 @@ JSONのみ出力してください。H2は最大5個、各H2の中にH3を必ず
         return None, f"構成案のJSON解析エラー: {e}\n生データ: {result[:500]}"
 
 
+def extract_relevant_info(query, text, max_chars=4000):
+    """
+    指定されたクエリ（見出しなど）に関連する段落だけをテキスト全体から抽出する。
+    これにより、LLMに不要なノイズを与えず、トークン数の節約と精度の向上を図る。
+    """
+    if not text or not query:
+        return text[:max_chars] if text else "(情報なし)"
+        
+    # 日本語のクエリから重要そうな単語を抽出（記号で分割し、2文字以上を対象）
+    words = [w for w in re.split(r'[\s、。！？,.\-「」『』()（）]+', query) if len(w) >= 2]
+    if not words:
+        return text[:max_chars]
+        
+    paragraphs = text.split('\n\n')
+    scored_paragraphs = []
+    
+    for i, p in enumerate(paragraphs):
+        p = p.strip()
+        if len(p) < 15:
+            continue
+        score = 0
+        p_lower = p.lower()
+        for w in words:
+            if w.lower() in p_lower:
+                score += len(w) * 2
+        
+        # 最初の数段落（ソースの冒頭や要約など）はボーナス点
+        if i < 3:
+            score += 5
+            
+        scored_paragraphs.append((score, i, p))
+        
+    # スコアの高い順にソート
+    scored_paragraphs.sort(key=lambda x: x[0], reverse=True)
+    
+    top_paragraphs = []
+    current_len = 0
+    for score, i, p in scored_paragraphs:
+        if current_len + len(p) > max_chars:
+            break
+        # 全く関連しない（score=0）段落は、すでにある程度データが集まっていれば捨てる
+        if score == 0 and current_len > max_chars / 2:
+            break
+            
+        top_paragraphs.append((i, p))
+        current_len += len(p) + 2
+        
+    # 抽出した段落を元のファイル上の出現順序に戻す（自然な文脈を保つため）
+    top_paragraphs.sort(key=lambda x: x[0])
+    
+    result_text = "\n\n".join([p for i, p in top_paragraphs])
+    if not result_text.strip():
+        return "(該当する詳細情報は見つかりませんでした)"
+        
+    return result_text
+
+
 # ==========================================
 # 記事本文の生成
 # ==========================================
@@ -320,10 +378,12 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
     current_api_key = api_key if api_key else (GROQ_API_KEY if AI_BACKEND == "groq" else GOOGLE_API_KEY)
     product_info = load_product_info()
 
-    # リサーチデータを整形（トークン制限対策）
-    source_data = ""
+    # リサーチデータ全体と独自ソース全体を保持（ここではまだ切り詰めない）
+    full_source_data = ""
     if research_data and research_data.get("combined_content"):
-        source_data = research_data["combined_content"][:5000]
+        full_source_data = research_data["combined_content"]
+        
+    full_custom_sources = custom_sources_text if custom_sources_text else ""
 
     full_article_html = ""
     
@@ -346,6 +406,11 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
             previous_context = f"これは記事の【最後のセクション（まとめ等）】です。全体を総括しつつ、読者の次の行動（CTA）を自然に促してください。直前のH2は「{sections[index-1]['h2']}」でした。"
         else:
             previous_context = f"直前のH2は「{sections[index-1]['h2']}」でした。前の文脈を自然に引き継ぎながら本文を展開してください。"
+
+        # スマート抽出（RAG風）：このH2/H3に関連する情報だけを抽出
+        query_text = f"{keyword} {h2_title} " + " ".join(h3_list)
+        section_custom_sources = extract_relevant_info(query_text, full_custom_sources, max_chars=3000)
+        section_web_sources = extract_relevant_info(query_text, full_source_data, max_chars=4000)
 
         system_prompt = f"""あなたはSEOに精通したトップクラスのWebライターです。
 参考サイト (https://jetb.co.jp) のような、読者の心を動かす人間味と説得力のある記事を作成します。
@@ -381,10 +446,10 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
 {previous_context}
 
 ## 独自ソース（このセクションに関連する情報があれば積極活用）
-{custom_sources_text[:5000] if custom_sources_text else '（なし）'}
+{section_custom_sources}
 
 ## Web参考情報（コピペせず、あくまで参考材料として使う）
-{source_data}
+{section_web_sources}
 
 ## ★執筆開始
 指定された「{h2_title}」のセクションのみを、完璧なHTML形式で出力してください。
