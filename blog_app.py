@@ -407,11 +407,22 @@ with tab_generate:
                             st.markdown(f"  └ {h3}")
                 
                 # ステップ3: 記事本文の生成（独自ソースも渡す）
-                st.write("✍️ **Step 3:** 記事本文を生成中（少々お待ちください...）")
+                st.write("✍️ **Step 3:** 記事本文を生成中（APIを複数回呼び出すため数分かかります）")
+                
+                # 進捗表示用のプレースホルダー
+                progress_placeholder = st.empty()
+                
+                def update_progress(msg):
+                    progress_placeholder.info(msg)
+                
                 article_html, body_error = blog_generator.generate_article_body(
                     full_keyword, outline_data, research_data, api_key,
-                    custom_sources_text=custom_sources_text
+                    custom_sources_text=custom_sources_text,
+                    progress_callback=update_progress
                 )
+                
+                # 生成が終わったらプレースホルダーを消去または完了表示
+                progress_placeholder.empty()
                 
                 if body_error:
                     st.error(f"本文生成エラー: {body_error}")

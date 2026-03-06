@@ -14,6 +14,7 @@ import json
 import random
 import requests
 import re
+import time
 from datetime import datetime
 
 import web_researcher
@@ -211,8 +212,11 @@ def generate_content_groq(api_key, system_prompt, user_prompt, temperature=0.7):
         return None, f"Groq API Exception: {e}"
 
 
-def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7):
-    """現在のバックエンド設定に応じてAPIを叩く（統一インターフェース）"""
+def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7, max_retries=3):
+    """
+    現在のバックエンド設定に応じてAPIを叩く（統一インターフェース）
+    ★エラー時の自動リトライ機能付き
+    """
     
     # APIキーからバックエンドを自動判定（安全策）
     backend = AI_BACKEND
@@ -222,14 +226,32 @@ def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7):
         elif api_key.startswith("AIza"):
             backend = "gemini"
             
-    if backend == "groq":
-        print(f"🤖 API Call: Groq (Key: {api_key[:4]}...)")
-        groq_key = api_key if api_key else GROQ_API_KEY
-        return generate_content_groq(groq_key, system_prompt, user_prompt, temperature)
-    else:
-        key_to_use = api_key if api_key else GOOGLE_API_KEY
-        print(f"🤖 API Call: Gemini (Key: {key_to_use[:4]}...)")
-        return generate_content_gemini(key_to_use, system_prompt, user_prompt, temperature)
+    for attempt in range(max_retries):
+        if backend == "groq":
+            if attempt == 0:
+                print(f"🤖 API Call: Groq (Key: {api_key[:4]}...)")
+            groq_key = api_key if api_key else GROQ_API_KEY
+            result, error = generate_content_groq(groq_key, system_prompt, user_prompt, temperature)
+        else:
+            key_to_use = api_key if api_key else GOOGLE_API_KEY
+            if attempt == 0:
+                print(f"🤖 API Call: Gemini (Key: {key_to_use[:4]}...)")
+            result, error = generate_content_gemini(key_to_use, system_prompt, user_prompt, temperature)
+            
+        if not error:
+            return result, None
+            
+        # 429エラーなどの場合、少し待ってからリトライ
+        if "429" in error or "Quota" in error or "Too Many Requests" in error:
+            wait_time = (attempt + 1) * 3  # 3秒, 6秒, 9秒と待機時間を増やす
+            print(f"    ⚠ API制限に到達 (Attempt {attempt+1}/{max_retries}). {wait_time}秒後にリトライします...")
+            time.sleep(wait_time)
+            continue
+        else:
+            # 429以外の致命的なエラーはすぐ返す
+            return None, error
+            
+    return None, f"APIの呼び出しに{max_retries}回失敗しました。最新のエラー: {error}"
 
 
 # ==========================================
@@ -303,10 +325,23 @@ JSONのみ出力してください。H2は最大5個、各H2の中にH3を必ず
     try:
         # JSON部分を抽出
         cleaned = result.replace("```json", "").replace("```", "").strip()
+        
+        # サニタイズ: 最後のカンマ（,）の後に閉じ括弧が来るパターン（LLMの常見ミス）を自己修復
+        cleaned = re.sub(r',\s*([\]}])', r'\1', cleaned)
+        # 制御文字の除去
+        cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
+        
         outline_data = json.loads(cleaned)
         return outline_data, None
     except json.JSONDecodeError as e:
-        return None, f"構成案のJSON解析エラー: {e}\n生データ: {result[:500]}"
+        print(f"⚠ JSON自己修復を試みましたが失敗しました: {e}")
+        # さらに強力な修復を試みる（最後の手段）
+        try:
+             import ast
+             outline_data = ast.literal_eval(cleaned)
+             return outline_data, None
+        except Exception as eval_e:
+             return None, f"構成案のJSON解析に完全に失敗しました: {e}\n生データ: {result[:500]}"
 
 
 def extract_relevant_info(query, text, max_chars=4000):
@@ -322,7 +357,9 @@ def extract_relevant_info(query, text, max_chars=4000):
     if not words:
         return text[:max_chars]
         
-    paragraphs = text.split('\n\n')
+    # 古い実装: paragraphs = text.split('\n\n') は改行1個の段落を捉えられない
+    # 新しい実装: 1個以上の改行で確実に分割する
+    paragraphs = re.split(r'\n+', text)
     scored_paragraphs = []
     
     for i, p in enumerate(paragraphs):
@@ -370,7 +407,7 @@ def extract_relevant_info(query, text, max_chars=4000):
 # 記事本文の生成
 # ==========================================
 
-def generate_article_body(keyword, outline_data, research_data, api_key, custom_sources_text=""):
+def generate_article_body(keyword, outline_data, research_data, api_key, custom_sources_text="", progress_callback=None):
     """
     構成案に基づいてSEOブログ記事の本文を生成する。
     【Ver2.0】見出し（H2）ごとに個別にAIを呼び出し、内容を限界まで濃く・深くする方式に変更。
@@ -455,8 +492,12 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
 指定された「{h2_title}」のセクションのみを、完璧なHTML形式で出力してください。
 """
         
-        # API呼び出し（進捗がわかるようにprint）
-        print(f"  └ ✍️ 章を執筆中 ({index+1}/{len(sections)}): {h2_title[:15]}...")
+        # API呼び出し（進捗がわかるようにprint & callback）
+        msg = f"✍️ 第{index+1}章を執筆中 ({index+1}/{len(sections)}): {h2_title[:15]}..."
+        print(f"  └ {msg}")
+        if progress_callback:
+            progress_callback(msg)
+            
         result, error = generate_content_api(current_api_key, system_prompt, user_prompt, temperature=0.7)
         
         if error:
