@@ -259,7 +259,7 @@ def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7, m
 # 記事構成の生成
 # ==========================================
 
-def generate_article_outline(keyword, research_data, api_key, custom_sources_text=""):
+def generate_article_outline(keyword, research_data, api_key, custom_sources_text="", target_product=""):
     """
     記事の構成案（見出し構造）を先に生成する。
     これにより、記事全体の流れを制御しやすくする。
@@ -290,10 +290,12 @@ def generate_article_outline(keyword, research_data, api_key, custom_sources_tex
 
 ## 取り扱い商品情報
 {product_info[:3000]}
-
-## 出力形式
-JSONのみ出力してください。各H2の中にH3を必ず入れてください。
 """
+
+    if target_product:
+        user_prompt += f"\n## 推し商品（記事のどこかで自然に紹介する目標）\n{target_product}\n"
+
+    user_prompt += "\n## 出力形式\nJSONのみ出力してください。各H2の中にH3を必ず入れてください。\n"
 
     result, error = generate_content_api(current_api_key, system_prompt, user_prompt, temperature=0.6)
 
@@ -385,7 +387,7 @@ def extract_relevant_info(query, text, max_chars=4000):
 # 記事本文の生成
 # ==========================================
 
-def generate_article_body(keyword, outline_data, research_data, api_key, custom_sources_text="", progress_callback=None):
+def generate_article_body(keyword, outline_data, research_data, api_key, custom_sources_text="", progress_callback=None, target_product=""):
     """
     構成案に基づいてSEOブログ記事の本文を生成する。
     【Ver2.0】見出し（H2）ごとに個別にAIを呼び出し、内容を限界まで濃く・深くする方式に変更。
@@ -438,6 +440,9 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
             section_web_sources=section_web_sources,
             h2_title=h2_title
         )
+        
+        if target_product:
+            user_prompt += f"\n\n※特に、今回は「{target_product}」を読者に自然に紹介・おすすめすることを意識してください。"
         
         # API呼び出し（進捗がわかるようにprint & callback）
         msg = f"✍️ 第{index+1}章を執筆中 ({index+1}/{len(sections)}): {h2_title[:15]}..."

@@ -270,6 +270,13 @@ with tab_generate:
             height=80
         )
         
+        # 特定の推し商品（アフィリエイト用）
+        target_product = st.text_input(
+            "推したい商品（アフィリエイト等）",
+            placeholder="例: フィンガーライム ピンクアイス 接ぎ木苗",
+            help="この記事で絶対に売りたい/紹介したい商品名があれば入力してください"
+        )
+        
         # キーワードの提案
         st.markdown("---")
         st.markdown("#### 💡 キーワード候補（コピペして使ってください）")
@@ -390,7 +397,8 @@ with tab_generate:
                 st.write("📋 **Step 2:** 記事構成案を生成中...")
                 outline_data, outline_error = blog_generator.generate_article_outline(
                     full_keyword, research_data, api_key,
-                    custom_sources_text=custom_sources_text
+                    custom_sources_text=custom_sources_text,
+                    target_product=target_product
                 )
                 
                 if outline_error:
@@ -419,7 +427,8 @@ with tab_generate:
                 article_html, body_error = blog_generator.generate_article_body(
                     full_keyword, outline_data, research_data, api_key,
                     custom_sources_text=custom_sources_text,
-                    progress_callback=update_progress
+                    progress_callback=update_progress,
+                    target_product=target_product
                 )
                 
                 # 生成が終わったらプレースホルダーを消去または完了表示
