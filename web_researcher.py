@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 import re
 import time
 import random
+import concurrent.futures
 
 # ユーザーエージェント一覧（ブロック回避用）
 USER_AGENTS = [
@@ -227,27 +228,34 @@ def research_keyword(keyword, max_sources=5):
             "source_count": 0,
         }
 
-    # 各ページの内容を取得
+    # 各ページの内容を並列で取得（超高速化）
     sources = []
     all_headings = []
     all_content_parts = []
-
-    for i, url in enumerate(urls[:max_sources + 3]):
-        if len(sources) >= max_sources:
-            break
-
-        print(f"  📄 取得中 ({i+1}/{len(urls)}): {url[:80]}...")
-        page_data = extract_page_content(url)
-
-        if page_data and page_data["content"] and len(page_data["content"]) > 100:
-            sources.append(page_data)
-            all_headings.extend(page_data["headings"])
-            all_content_parts.append(
-                f"【出典: {page_data['title'][:60]}】\n{page_data['content'][:3000]}"
-            )
-
-        # サーバー負荷軽減のため少し待つ
-        time.sleep(random.uniform(1.0, 2.5))
+    
+    urls_to_fetch = urls[:max_sources + 3]
+    print(f"  🚀 {len(urls_to_fetch)}件のURLを並列処理で取得中...")
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_url = {executor.submit(extract_page_content, url): url for url in urls_to_fetch}
+        for future in concurrent.futures.as_completed(future_to_url):
+            if len(sources) >= max_sources:
+                break
+                
+            url = future_to_url[future]
+            try:
+                page_data = future.result()
+                if page_data and page_data["content"] and len(page_data["content"]) > 100:
+                    print(f"  ✅ 取得成功: {page_data['title'][:40]}...")
+                    sources.append(page_data)
+                    all_headings.extend(page_data["headings"])
+                    all_content_parts.append(
+                        f"【出典: {page_data['title'][:60]}】\n{page_data['content'][:3000]}"
+                    )
+                else:
+                    print(f"  ⚠ コンテンツ不足: {url[:40]}...")
+            except Exception as e:
+                print(f"  ❌ 取得エラー {url[:40]}...: {e}")
 
     # 結果を統合
     combined_content = "\n\n---\n\n".join(all_content_parts)
