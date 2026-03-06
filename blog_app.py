@@ -436,6 +436,17 @@ with tab_generate:
                 char_count = len(plain_text)
                 st.write(f"  ✅ 記事生成完了！（約{char_count:,}文字）")
                 
+                # --- SEO強化: スキーマ（JSON-LD）の抽出と再配置 ---
+                # 各章でバラバラに生成されたJSON-LDを見つけて抽出し、記事の最後にまとめて配置する
+                schema_scripts = re.findall(r'<script type="application/ld\+json">.*?</script>', article_html, re.DOTALL)
+                if schema_scripts:
+                    # 本文から一旦スクリプトを削除
+                    article_html = re.sub(r'<script type="application/ld\+json">.*?</script>', '', article_html, flags=re.DOTALL)
+                    # 最後にまとめて追加
+                    combined_schema = "\n\n<!-- SEO Schema Data -->\n" + "\n".join(schema_scripts)
+                    article_html += combined_schema
+                    st.write(f"  ✅ SEOデータ（JSON-LD）を{len(schema_scripts)}件検知・自動配置しました")
+                
                 # 結果をまとめる
                 article_data = {
                     "keyword": keyword,
