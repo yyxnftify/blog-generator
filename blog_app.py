@@ -389,7 +389,8 @@ with tab_generate:
                 # ステップ2: 構成案の生成
                 st.write("📋 **Step 2:** 記事構成案を生成中...")
                 outline_data, outline_error = blog_generator.generate_article_outline(
-                    full_keyword, research_data, api_key
+                    full_keyword, research_data, api_key,
+                    custom_sources_text=custom_sources_text
                 )
                 
                 if outline_error:

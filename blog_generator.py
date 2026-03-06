@@ -19,6 +19,7 @@ from datetime import datetime
 
 import web_researcher
 import source_loader
+import prompts
 
 # ==========================================
 # グローバル設定
@@ -258,7 +259,7 @@ def generate_content_api(api_key, system_prompt, user_prompt, temperature=0.7, m
 # 記事構成の生成
 # ==========================================
 
-def generate_article_outline(keyword, research_data, api_key):
+def generate_article_outline(keyword, research_data, api_key, custom_sources_text=""):
     """
     記事の構成案（見出し構造）を先に生成する。
     これにより、記事全体の流れを制御しやすくする。
@@ -271,50 +272,27 @@ def generate_article_outline(keyword, research_data, api_key):
     if research_data and research_data.get("combined_headings"):
         headings_list = research_data["combined_headings"][:30]
         existing_headings = "\n".join(headings_list)
+        
+    # 独自ソースから関連情報を抽出（トークン節約＆構成案への反映）
+    relevant_custom_info = extract_relevant_info(keyword, custom_sources_text, max_chars=3000)
 
-    system_prompt = """あなたはSEOに精通したプロのWebライター兼編集者です。
-指定されたキーワードに対して、Google検索1位を狙える記事の構成案を作成してください。
-
-## ★最重要：構成ルール
-1. **H2見出しは最大5個まで**（厳選する）
-2. **各H2の下に必ずH3見出しを2〜3個作る**（読みやすさのため小見出しを入れる）
-3. H2見出しは「読者が思わずクリックしたくなる」キャッチーな表現にする
-   - 良い例: 「フィンガーライム、知っていますか？」「実は○○だった！」「プロが教える○○のコツ」
-   - 悪い例: 「フィンガーライムとは」「フィンガーライムの栽培方法」（←これは退屈）
-4. 見出しのパターン例:
-   - 読者への呼びかけ型: 「○○で困っていませんか？」
-   - 驚き・発見型: 「意外と知らない○○の真実」
-   - まとめ・提案型: 「○○を始めるなら、まずはここから」
-5. 構成の流れ: 導入（読者の興味を引く）→ 本題（2〜3セクション）→ まとめ・CTA
-6. FAQは見出しとしてではなく、最後のH2セクションとしてまとめる
-
-## 出力形式
-以下のJSON形式で出力してください。
-{{
-    "title": "SEO最適化されたタイトル（32文字以内。キャッチーに）",
-    "meta_description": "メタディスクリプション（120文字以内）",
-    "outline": [
-        {{
-            "h2": "キャッチーなH2見出し",
-            "h3_list": ["具体的な小見出し1", "具体的な小見出し2"]
-        }},
-        ...
-    ],
-    "target_audience": "想定読者",
-    "search_intent": "検索意図の分析"
-}}"""
+    # configのプロンプトを使用
+    system_prompt = prompts.OUTLINE_SYSTEM_PROMPT
 
     user_prompt = f"""## ターゲットキーワード
 {keyword}
 
-## 競合サイトの見出し構造（参考。ただし見出しの数は5個以下に絞る）
+## 競合サイトの見出し構造（参考。ただし見出しの数は5〜6個に厳選すること）
 {existing_headings}
+
+## 独自ソース（今回書きたい内容の最重要ベース情報）
+{relevant_custom_info}
 
 ## 取り扱い商品情報
 {product_info[:3000]}
 
 ## 出力形式
-JSONのみ出力してください。H2は最大5個、各H2の中にH3を必ず入れてください。
+JSONのみ出力してください。各H2の中にH3を必ず入れてください。
 """
 
     result, error = generate_content_api(current_api_key, system_prompt, user_prompt, temperature=0.6)
@@ -449,48 +427,17 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
         section_custom_sources = extract_relevant_info(query_text, full_custom_sources, max_chars=3000)
         section_web_sources = extract_relevant_info(query_text, full_source_data, max_chars=4000)
 
-        system_prompt = f"""あなたはSEOに精通したトップクラスのWebライターです。
-参考サイト (https://jetb.co.jp) のような、読者の心を動かす人間味と説得力のある記事を作成します。
+        # プロンプトを専用ファイルから読み込み
+        system_prompt = prompts.BODY_SYSTEM_PROMPT.format(product_info=product_info[:2000])
 
-## ★最重要ミッション
-今回は記事全体の「指定された1つの見出し（H2）部分」のみを執筆してください。全体を書き上げる必要はありません。
-渡された見出しと小見出し（H3）に特化して、限界まで深く、濃く、具体的に書き上げてください。
-
-## ★文体・ライティングルール（厳守）
-1. AI臭を完全排除する：「〜と言えるでしょう」「〜について解説します」「いかがでしたでしょうか」等のテンプレ語は一発退場レベルのNG。
-2. 読者の心に入り込む：実際の専門家や愛好家が、目の前の相手に熱く語りかけるような自然な文体。（例：「実は〜」「ここだけの話ですが〜」「〜だと思いませんか？」）
-3. 著者の体温を感じさせる：単なる知識の羅列ではなく、実体験や個人的な感情（「個人的には〜が好きです」「失敗談ですが〜」）をさりげなく交える。
-4. 重複の禁止：「他の章で書きそうな一般的なこと」は避け、この見出し独自のコアな情報を掘り下げる。
-
-## ★HTML出力ルール（厳守）
-- 出力はHTML形式のみ。Markdown（# や **）は絶対に混ぜないこと。
-- 指定されたH2見出しを `<h2>` タグで出力することから始める。
-- 指定されたH3見出しを `<h3>` タグで出力する。
-- 本文は `<p>` で段落分けする（1段落は3〜4文。スマホで読みやすく）。
-- 重要なキーワードや読者に伝えたい結論は `<strong>` タグで強調する。
-
-## 商品情報（CTA用・関連する場合のみ自然に紹介）
-{product_info[:2000]}
-"""
-
-        user_prompt = f"""## ターゲットキーワード
-{keyword}
-
-## 今回執筆する見出し構成（これだけを書いてください）
-{section_outline}
-
-## 文脈の指定
-{previous_context}
-
-## 独自ソース（このセクションに関連する情報があれば積極活用）
-{section_custom_sources}
-
-## Web参考情報（コピペせず、あくまで参考材料として使う）
-{section_web_sources}
-
-## ★執筆開始
-指定された「{h2_title}」のセクションのみを、完璧なHTML形式で出力してください。
-"""
+        user_prompt = prompts.BODY_USER_PROMPT_TEMPLATE.format(
+            keyword=keyword,
+            section_outline=section_outline,
+            previous_context=previous_context,
+            section_custom_sources=section_custom_sources,
+            section_web_sources=section_web_sources,
+            h2_title=h2_title
+        )
         
         # API呼び出し（進捗がわかるようにprint & callback）
         msg = f"✍️ 第{index+1}章を執筆中 ({index+1}/{len(sections)}): {h2_title[:15]}..."
