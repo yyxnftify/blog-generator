@@ -315,100 +315,105 @@ JSONのみ出力してください。H2は最大5個、各H2の中にH3を必ず
 def generate_article_body(keyword, outline_data, research_data, api_key, custom_sources_text=""):
     """
     構成案に基づいてSEOブログ記事の本文を生成する。
-    JetBサイト風の読みやすい記事を目指す。
-    custom_sources_text: source_loaderから取得した独自ソースのテキスト
+    【Ver2.0】見出し（H2）ごとに個別にAIを呼び出し、内容を限界まで濃く・深くする方式に変更。
     """
     current_api_key = api_key if api_key else (GROQ_API_KEY if AI_BACKEND == "groq" else GOOGLE_API_KEY)
     product_info = load_product_info()
 
-    # リサーチデータを整形
+    # リサーチデータを整形（トークン制限対策）
     source_data = ""
     if research_data and research_data.get("combined_content"):
-        # 文字数制限（Groq対策: 15000 -> 5000）
         source_data = research_data["combined_content"][:5000]
 
-    # 構成案をテキスト化
-    outline_text = ""
-    for section in outline_data.get("outline", []):
-        outline_text += f"\n## {section['h2']}\n"
-        for h3 in section.get("h3_list", []):
-            outline_text += f"### {h3}\n"
+    full_article_html = ""
+    
+    # 構成案の見出し（H2）ごとにループして生成
+    sections = outline_data.get("outline", [])
+    
+    for index, section in enumerate(sections):
+        h2_title = section['h2']
+        h3_list = section.get('h3_list', [])
+        
+        # この章専用の構成テキストを作成
+        section_outline = f"## {h2_title}\n"
+        for h3 in h3_list:
+            section_outline += f"### {h3}\n"
+            
+        # 前のセクションの文脈（不自然な繋がりを防ぐため）
+        if index == 0:
+            previous_context = "これは記事の【最初のセクション】です。読者の興味を強く惹きつける「導入（リード文）」の役割も兼ねて、魅力的に書き出してください。"
+        elif index == len(sections) - 1:
+            previous_context = f"これは記事の【最後のセクション（まとめ等）】です。全体を総括しつつ、読者の次の行動（CTA）を自然に促してください。直前のH2は「{sections[index-1]['h2']}」でした。"
+        else:
+            previous_context = f"直前のH2は「{sections[index-1]['h2']}」でした。前の文脈を自然に引き継ぎながら本文を展開してください。"
 
-    system_prompt = f"""あなたは、SEOライティングのプロフェッショナルです。
-以下の指示に従って、WordPressブログ用のSEO記事を執筆してください。
-参考サイト: https://jetb.co.jp のブログ記事のような、読み応えがあり中身の濃い記事を目指します。
+        system_prompt = f"""あなたはSEOに精通したトップクラスのWebライターです。
+参考サイト (https://jetb.co.jp) のような、読者の心を動かす人間味と説得力のある記事を作成します。
 
-## ★最重要：記事構成ルール
-1. **見出し構造**: <h2>見出しの下に、必ず<h3>見出し（小見出し）を2〜3個入れること。
-   - 悪い例：<h2>の下に長文がダラダラ続く（読みづらい）
-   - 良い例：<h2>の下に短い導入 → <h3>小見出し → 本文 → <h3>小見出し → 本文
-2. **情報の絞り込み**: 全てを網羅しようとせず、ターゲットキーワードに関連する重要なポイントに絞って深く書く。
-3. **重複禁止**: 同じ内容（特に「品種確定苗の重要性」など）を何度も繰り返さない。一度詳しく書けばOK。
-4. **冒頭リード文**: 読者の興味を引く「問いかけ」から始める。
+## ★最重要ミッション
+今回は記事全体の「指定された1つの見出し（H2）部分」のみを執筆してください。全体を書き上げる必要はありません。
+渡された見出しと小見出し（H3）に特化して、限界まで深く、濃く、具体的に書き上げてください。
 
-## ★最重要：文体ルール（これがこの記事の命）
-1. **AI臭を完全排除する**:
-   - 「〜と言えるでしょう」「〜ではないでしょうか」禁止
-   - 「いかがでしたでしょうか」禁止
-   - 同じ語尾（〜ます。）の3連続禁止
-2. **人間味のある自然な文体**:
-   - 「実は〜」「ここだけの話ですが〜」のような表現を使う
-   - 著者の感想「個人的には〜が好きです」を2〜3箇所入れる
-   - 読者への呼びかけ「〜だと思いませんか？」を入れる
+## ★文体・ライティングルール（厳守）
+1. AI臭を完全排除する：「〜と言えるでしょう」「〜について解説します」「いかがでしたでしょうか」等のテンプレ語は一発退場レベルのNG。
+2. 読者の心に入り込む：実際の専門家や愛好家が、目の前の相手に熱く語りかけるような自然な文体。（例：「実は〜」「ここだけの話ですが〜」「〜だと思いませんか？」）
+3. 著者の体温を感じさせる：単なる知識の羅列ではなく、実体験や個人的な感情（「個人的には〜が好きです」「失敗談ですが〜」）をさりげなく交える。
+4. 重複の禁止：「他の章で書きそうな一般的なこと」は避け、この見出し独自のコアな情報を掘り下げる。
 
-## ★SEOライティングの技術ルール
-1. **段落は3〜4文で改行**する
-2. **太字（<strong>）**で重要ポイントを強調する
-3. **画像挿入ポイント**を<!-- 画像: 説明 -->で示す
+## ★HTML出力ルール（厳守）
+- 出力はHTML形式のみ。Markdown（# や **）は絶対に混ぜないこと。
+- 指定されたH2見出しを `<h2>` タグで出力することから始める。
+- 指定されたH3見出しを `<h3>` タグで出力する。
+- 本文は `<p>` で段落分けする（1段落は3〜4文。スマホで読みやすく）。
+- 重要なキーワードや読者に伝えたい結論は `<strong>` タグで強調する。
 
-## ★HTML出力形式（厳守）
-- 記事の全体をHTMLタグで構成する
-- `<h2>` タグで大見出し
-- `<h3>` タグで小見出し
-- `<p>` タグで本文
-- `<ul><li>` タグで箇条書き
-- **`[]` や `**` などのMarkdown記法はHTMLの中に混ぜないこと**
-
-## 商品情報（CTA挿入用）
-{product_info[:3000]}
+## 商品情報（CTA用・関連する場合のみ自然に紹介）
+{product_info[:2000]}
 """
 
-    user_prompt = f"""## ターゲットキーワード
+        user_prompt = f"""## ターゲットキーワード
 {keyword}
 
-## 記事タイトル
-{outline_data.get('title', keyword)}
+## 今回執筆する見出し構成（これだけを書いてください）
+{section_outline}
 
-## 記事構成（この構成案に従うこと）
-{outline_text}
+## 文脈の指定
+{previous_context}
 
-## 独自ソース（最優先）
-{custom_sources_text[:5000] if custom_sources_text else '（独自ソースなし）'}
+## 独自ソース（このセクションに関連する情報があれば積極活用）
+{custom_sources_text[:5000] if custom_sources_text else '（なし）'}
 
-## Web参考ソース（補助情報）
+## Web参考情報（コピペせず、あくまで参考材料として使う）
 {source_data}
 
 ## ★執筆開始
-SEO最適化されたブログ記事をHTML形式のみで出力してください。
-`<h2>` から書き始めてください。
+指定された「{h2_title}」のセクションのみを、完璧なHTML形式で出力してください。
 """
+        
+        # API呼び出し（進捗がわかるようにprint）
+        print(f"  └ ✍️ 章を執筆中 ({index+1}/{len(sections)}): {h2_title[:15]}...")
+        result, error = generate_content_api(current_api_key, system_prompt, user_prompt, temperature=0.7)
+        
+        if error:
+            print(f"    ⚠ この章の生成でエラー発生: {error}")
+            full_article_html += f"<h2>{h2_title}</h2>\n<p>※生成エラーにより本文をスキップしました。</p>\n\n"
+            continue
+            
+        # HTMLの整形（不要なマークダウン記法の除去）
+        html_chunk = result.strip()
+        if html_chunk.startswith("```html"):
+            html_chunk = html_chunk[7:]
+        if html_chunk.startswith("```"):
+            html_chunk = html_chunk[3:]
+        if html_chunk.endswith("```"):
+            html_chunk = html_chunk[:-3]
+            
+        full_article_html += html_chunk.strip() + "\n\n"
 
-    result, error = generate_content_api(current_api_key, system_prompt, user_prompt, temperature=0.7)
-
-    if error:
-        return None, error
-
-    # HTMLの整形
-    article_html = result.strip()
-    if article_html.startswith("```html"):
-        article_html = article_html[7:]
-    if article_html.startswith("```"):
-        article_html = article_html[3:]
-    if article_html.endswith("```"):
-        article_html = article_html[:-3]
-    article_html = article_html.strip()
-
-    return article_html, None
+    if not full_article_html.strip():
+         return None, "すべての章の生成に失敗しました"
+         
+    return full_article_html, None
 
 
 # ==========================================
