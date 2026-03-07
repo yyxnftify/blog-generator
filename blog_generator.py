@@ -430,7 +430,13 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
         section_web_sources = extract_relevant_info(query_text, full_source_data, max_chars=4000)
 
         # プロンプトを専用ファイルから読み込み
-        system_prompt = prompts.BODY_SYSTEM_PROMPT.format(product_info=product_info[:2000])
+        import affiliate_manager
+        affiliate_list_prompt = affiliate_manager.format_affiliate_list_for_prompt()
+        
+        system_prompt = prompts.BODY_SYSTEM_PROMPT.format(
+            affiliate_list_prompt=affiliate_list_prompt,
+            product_info=product_info[:2000]
+        )
 
         user_prompt = prompts.BODY_USER_PROMPT_TEMPLATE.format(
             keyword=keyword,
@@ -470,6 +476,10 @@ def generate_article_body(keyword, outline_data, research_data, api_key, custom_
 
     if not full_article_html.strip():
          return None, "すべての章の生成に失敗しました"
+         
+    # ▼【自動化】AIが出力した [AFF_LINK: 商品名] を、実際のアフィリエイトタグに完全自動置換する
+    import affiliate_manager
+    full_article_html = affiliate_manager.replace_affiliate_placeholders(full_article_html)
          
     return full_article_html, None
 

@@ -15,6 +15,7 @@ import blog_generator
 import web_researcher
 import wp_publisher
 import source_loader
+import affiliate_manager
 
 # ==========================================
 # ページ設定
@@ -233,9 +234,10 @@ st.markdown("""
 # ==========================================
 # メインコンテンツ：タブ構成
 # ==========================================
-tab_generate, tab_sources, tab_history, tab_preview = st.tabs([
+tab_generate, tab_sources, tab_affiliate, tab_history, tab_preview = st.tabs([
     "✍️ 記事生成",
     "📂 ソース管理",
+    "💰 アフィリエイト",
     "📚 生成履歴",
     "👁️ プレビュー"
 ])
@@ -816,7 +818,49 @@ with tab_sources:
 
 
 # ==========================================
-# タブ3: 生成履歴
+# タブ3: アフィリエイト管理
+# ==========================================
+with tab_affiliate:
+    st.subheader("💰 アフィリエイト商品管理")
+    st.markdown("ここで登録した商品は、記事生成時にAIが文脈に合わせて自動で選び出し、自然な文章で紹介してくれます。")
+    
+    with st.expander("➕ 新しい商品を登録する", expanded=False):
+        with st.form("add_affiliate_form", clear_on_submit=True):
+            aff_name = st.text_input("商品名（AIが識別するための名前）", placeholder="例: フィンガーライム ピンクアイス 接ぎ木苗")
+            aff_feature = st.text_area("特徴・おすすめする読者層（AIへの指示）", placeholder="例: 初心者向け、ピンク色の可愛い実を育てたい人、ベランダ栽培を考えている人向け")
+            aff_tag = st.text_area("実際のアフィリエイトタグ（またはショートコード）", placeholder='例: <a href="https://example.com/aff">商品購入はこちら</a> または [rinker id="123"]')
+            
+            aff_submit = st.form_submit_button("💾 登録する", type="primary")
+            if aff_submit:
+                if not aff_name or not aff_tag:
+                    st.error("⚠️ 商品名とアフィリエイトタグは必須です")
+                else:
+                    if affiliate_manager.add_affiliate_link(aff_name, aff_feature, aff_tag):
+                        st.success(f"✅ 「{aff_name}」を登録しました！")
+                        st.rerun()
+                    else:
+                        st.error("❌ 登録に失敗しました")
+    
+    st.markdown("---")
+    st.markdown("### 📋 登録済みのアフィリエイト商品一覧")
+    
+    aff_links = affiliate_manager.load_affiliate_links()
+    if aff_links:
+        for link in aff_links:
+            with st.expander(f"🛒 {link.get('name', '未設定')}"):
+                st.markdown(f"**【AIへの特徴指示】**\n{link.get('feature', '')}")
+                st.markdown("**【タグ/ショートコード】**")
+                st.code(link.get('tag', ''), language="html")
+                
+                if st.button(f"🗑️ 削除", key=f"del_aff_{link.get('id', '')}"):
+                    affiliate_manager.delete_affiliate_link(link.get("id"))
+                    st.rerun()
+    else:
+        st.info("📭 まだアフィリエイト商品が登録されていません。AIに自動で販売させたい商品を登録しましょう！")
+
+
+# ==========================================
+# タブ4: 生成履歴
 # ==========================================
 with tab_history:
     st.subheader("📚 生成した記事の履歴")
